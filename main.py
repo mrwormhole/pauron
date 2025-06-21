@@ -24,40 +24,31 @@ def setup_ssh_for_aur():
 
     key_path = os.path.join(ssh_dir, "aur_key")
 
-    # Ensure proper key format with newlines
+    # Get the key exactly as it is in the environment
     aur_key = os.environ["AUR_SSH_KEY"]
-    if not aur_key.endswith('\n'):
-        aur_key += '\n'
 
+    # Debug: Check what we're getting
+    logger.info(f"Key length: {len(aur_key)} characters")
+    logger.info(f"Key line count: {aur_key.count(chr(10)) + 1}")  # Count newlines + 1
+
+    # Write key exactly as received, ensuring it ends with newline like echo does
     with open(key_path, "w") as f:
-        f.write(os.environ["AUR_SSH_KEY"])
-    os.chmod(key_path, 0o600)
-    os.chmod(ssh_dir, 0o700)
+        f.write(aur_key)
+        if not aur_key.endswith('\n'):
+            f.write('\n')
 
-    ssh_config = f"""
-Host aur.archlinux.org
+    os.chmod(key_path, 0o600)
+
+    # Create SSH config that matches your manual test
+    ssh_config = f"""Host aur.archlinux.org
     IdentityFile {key_path}
+    StrictHostKeyChecking no
 """
+
     with open(os.path.join(ssh_dir, "config"), "w") as f:
         f.write(ssh_config)
 
-    try:
-        result = subprocess.run(
-            ["ssh-agent", "-s"], capture_output=True, text=True, check=True
-        )
-
-        for line in result.stdout.strip().split("\n"):
-            if "=" in line and line.startswith(("SSH_AUTH_SOCK", "SSH_AGENT_PID")):
-                key, value = line.split("=", 1)
-                value = value.rstrip(";").strip('"')
-                os.environ[key] = value
-
-        subprocess.run(["ssh-add", key_path], check=True)
-        logger.info("SSH key added to agent successfully")
-    except Exception as e:
-        logger.warning(f"SSH agent setup failed: {e}")
-
-    # Test the key format first
+    # Test the key format first (this should work now)
     try:
         result = subprocess.run(
             ["ssh-keygen", "-l", "-f", key_path],
@@ -67,29 +58,22 @@ Host aur.archlinux.org
         )
         logger.info(f"SSH key fingerprint: {result.stdout.strip()}")
     except subprocess.CalledProcessError as e:
-        logger.error(f"Invalid SSH key format: {e.stderr}")
-        return False
+        logger.error(f"SSH key validation failed: {e.stderr}")
+        return
 
-    # Add AUR host key to known_hosts to avoid host verification issues
-    try:
-        subprocess.run(
-            ["ssh-keyscan", "-H", "aur.archlinux.org"],
-            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
-            check=True,
-        )
-        logger.info("Added AUR host key to known_hosts")
-    except Exception as e:
-        logger.warning(f"Failed to add host key: {e}")
-
-    # Test SSH connection
+    # Test SSH connection exactly like your manual test
     try:
         result = subprocess.run(
-            ["ssh", "-T", "aur@aur.archlinux.org"],
+            ["ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no", "-T", "aur@aur.archlinux.org"],
             capture_output=True,
             text=True,
             timeout=10,
         )
-        logger.info("SSH connection test completed")
+        logger.info(f"SSH test completed with exit code: {result.returncode}")
+        if result.stderr:
+            logger.info(f"SSH stderr: {result.stderr}")
+        if result.stdout:
+            logger.info(f"SSH stdout: {result.stdout}")
     except Exception as e:
         logger.warning(f"SSH connection test failed: {e}")
 
