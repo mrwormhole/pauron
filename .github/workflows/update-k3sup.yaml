@@ -25,7 +25,8 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-requests
+          sudo apt install -y python3-pip
+          pip3 install requests
 
       - name: Update AUR package
         env:
