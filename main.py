@@ -1,0 +1,283 @@
+import hashlib
+import subprocess
+import os
+import logging
+import shutil
+import re
+import argparse
+
+import requests
+
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def setup_ssh_for_aur():
+    git_email = os.environ.get("GIT_EMAIL", "pauron@pauron.com")
+    git_name = os.environ.get("GIT_NAME", "Pauron")
+    subprocess.run(["git", "config", "--global", "user.email", git_email], check=True)
+    subprocess.run(["git", "config", "--global", "user.name", git_name], check=True)
+
+    ssh_dir = os.path.expanduser("~/.ssh")
+    os.makedirs(ssh_dir, exist_ok=True, mode=0o700)
+
+    key_path = os.path.join(ssh_dir, "aur_key")
+    with open(key_path, "w") as f:
+        f.write(os.environ["AUR_SSH_KEY"])
+    os.chmod(key_path, 0o600)
+
+    ssh_config = f"""
+Host aur.archlinux.org
+    IdentityFile {key_path}
+"""
+    with open(os.path.join(ssh_dir, "config"), "w") as f:
+        f.write(ssh_config)
+
+    try:
+        result = subprocess.run(
+            ["ssh-agent", "-s"], capture_output=True, text=True, check=True
+        )
+
+        for line in result.stdout.strip().split("\n"):
+            if "=" in line and line.startswith(("SSH_AUTH_SOCK", "SSH_AGENT_PID")):
+                key, value = line.split("=", 1)
+                value = value.rstrip(";").strip('"')
+                os.environ[key] = value
+
+        subprocess.run(["ssh-add", key_path], check=True)
+        logger.info("SSH key added to agent successfully")
+    except Exception as e:
+        logger.warning(f"SSH agent setup failed: {e}")
+
+
+def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | None:
+    """Clone AUR package and parse PKGBUILD metadata"""
+    try:
+        if os.path.exists(pkg_name):
+            pkgbuild_path = os.path.join(pkg_name, "PKGBUILD")
+            return parse_pkgbuild(pkgbuild_path)
+
+        logger.info(f"Cloning {aur_repo}")
+        subprocess.run(
+            ["git", "clone", aur_repo],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        pkgbuild_path = os.path.join(pkg_name, "PKGBUILD")
+        if not os.path.exists(pkgbuild_path):
+            raise FileNotFoundError("PKGBUILD not found")
+
+        logger.info("Parsing PKGBUILD...")
+        return parse_pkgbuild(pkgbuild_path)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Git operation failed: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Error: {e}")
+        return None
+
+
+def parse_pkgbuild(path) -> dict[str, str | None]:
+    """Extract specific metadata from PKGBUILD"""
+    metadata: dict[str, str | None] = {
+        "pkgver": None,
+        "sha256sums": None,
+        "_commit": None,
+        "source": None,
+        "owner_name": None,
+        "repo_name": None,
+    }
+
+    with open(path, "r") as f:
+        lines = f.readlines()
+
+    for line in lines:
+        line = line.strip()
+
+        if not line or line.startswith("#"):
+            continue
+
+        for field in metadata.keys():
+            if line.startswith(f"{field}="):
+                # Split by = and get the value part
+                value = line.split("=", 1)[1].strip()
+                # Remove trailing comments
+                value = value.split("#")[0].strip()
+                metadata[field] = value
+
+                if field == "source":
+                    parts = value.split("::")[-1].split("/")
+                    metadata["owner_name"], metadata["repo_name"] = parts[3], parts[4]
+                break
+
+    return metadata
+
+
+def display_metadata(metadata):
+    """Display extracted metadata"""
+    if not metadata:
+        logger.error("No metadata to display")
+        return
+
+    logger.info("Extracted metadata:")
+    for key, value in metadata.items():
+        logger.info(f"  {key}: {value}")
+
+
+def get_latest_github_release_tag(owner: str, repo: str):
+    """Get latest GitHub release tag"""
+    try:
+        url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
+        response = requests.get(url=url)
+        response.raise_for_status()
+        data = response.json()
+    except Exception as e:
+        logger.error(f"Failed to get latest Github release tag: {e}")
+        return None
+
+    return data["tag_name"]
+
+
+def calculate_sha256(owner: str, repo: str, tag: str) -> str | None:
+    """Get sha256 hash for a given tag using GitHub API"""
+    url = f"https://github.com/{owner}/{repo}/archive/{tag}.tar.gz"
+    sha256_hash = hashlib.sha256()
+
+    try:
+        response = requests.get(url, stream=True)
+        response.raise_for_status()
+        for chunk in response.iter_content(chunk_size=8192):
+            sha256_hash.update(chunk)
+
+        digest = sha256_hash.hexdigest()
+        logger.info(f"SHA256 hash for release tag({tag}): {digest}")
+        return digest
+    except Exception as e:
+        logger.error(f"Failed to calculate SHA256 hash for release tag({tag}): {e}")
+        return None
+
+
+def calculate_commit(owner: str, repo: str, tag: str) -> str | None:
+    """Get commit hash for a given tag using GitHub API"""
+    url = f"https://api.github.com/repos/{owner}/{repo}/git/refs/tags/{tag}"
+
+    try:
+        response = requests.get(url)
+        response.raise_for_status()
+        data = response.json()
+        commit_hash = data["object"]["sha"]
+
+        logger.info(f"Commit hash for release tag({tag}): {commit_hash}")
+        return commit_hash
+    except Exception as e:
+        logger.error(f"Failed to get commit hash for release tag({tag}): {e}")
+        return None
+
+
+def update_pkgbuild_file(file: str, new_pkgver: str, new_sha256: str, new_commit: str):
+    with open(file, "r") as f:
+        content = f.read()
+
+    # patch the values
+    content = re.sub(r"pkgver=.*", f"pkgver={new_pkgver}", content)
+    content = re.sub(r"sha256sums=\('.*?'\)", f"sha256sums=('{new_sha256}')", content)
+    content = re.sub(r"_commit=\('.*?'\)", f"_commit=('{new_commit}')", content)
+
+    with open(file, "w") as f:
+        f.write(content)
+    logger.info("PKGBUILD file was updated successfully")
+
+
+def update_dot_srcinfo_file(
+    file: str, new_pkgver: str, new_sha256: str, latest_tag: str
+):
+    with open(file, "r") as f:
+        content = f.read()
+
+    # patch the values
+    content = re.sub(r"pkgver = .*", f"pkgver = {new_pkgver}", content)
+    content = re.sub(r"sha256sums = .*", f"sha256sums = {new_sha256}", content)
+    content = re.sub(
+        r"source = k3sup-.*?\.tar\.gz::https://github\.com/alexellis/k3sup/archive/.*?\.tar\.gz",
+        f"source = k3sup-{latest_tag}.tar.gz::https://github.com/alexellis/k3sup/archive/{latest_tag}.tar.gz",
+        content,
+    )
+
+    with open(file, "w") as f:
+        f.write(content)
+    logger.info(".SRCINFO file was updated successfully")
+
+
+def push_changes(latest_tag: str):
+    subprocess.run(["git", "add", "."], check=True)
+    commit_msg = latest_tag
+    if commit_msg[0] != "v":
+        commit_msg = "v" + latest_tag
+    subprocess.run(["git", "commit", "-m", f"{commit_msg}"], check=True)
+    subprocess.run(["git", "push"], check=True)
+    logging.info(f"Successfully committed and pushed {latest_tag}")
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Update AUR package from GitHub releases"
+    )
+    parser.add_argument(
+        "--pkg-name", "-p", required=True, help="AUR package name (e.g., k3sup)"
+    )
+    args = parser.parse_args()
+
+    pkg_name = args.pkg_name
+    aur_repo = f"ssh://aur@aur.archlinux.org/{pkg_name}.git"
+
+    setup_ssh_for_aur()
+
+    logger.info(f"Processing AUR package: {aur_repo}")
+    metadata = clone_and_parse(pkg_name, aur_repo)
+    display_metadata(metadata)
+
+    logger.info("Checking for latest Github release version...")
+    owner, repo = metadata["owner_name"], metadata["repo_name"]
+    latest_tag: str = get_latest_github_release_tag(owner, repo)
+    current_version, new_version = metadata.get("pkgver"), latest_tag.lstrip("v")
+    if new_version == current_version:
+        logger.info(
+            f"Newest Github version({new_version}) and current PKGBUILD version({current_version}) are same, quitting."
+        )
+        return
+
+    new_sha_hash, new_commit_hash = (
+        calculate_sha256(owner, repo, latest_tag),
+        calculate_commit(owner, repo, latest_tag),
+    )
+
+    ## duplicate
+    for filename in ["PKGBUILD", ".SRCINFO"]:
+        filename = os.path.join(pkg_name, filename)
+        if os.path.exists(filename):
+            old_filename = f"{filename}_old"
+            os.rename(filename, old_filename)
+            shutil.copy2(old_filename, filename)
+        else:
+            logging.warning(f"File {filename} not found")
+
+    ## path values in files
+    file = os.path.join(pkg_name, "PKGBUILD")
+    update_pkgbuild_file(file, new_version, new_sha_hash, new_commit_hash)
+    file = os.path.join(pkg_name, ".SRCINFO")
+    update_dot_srcinfo_file(file, new_version, new_sha_hash, latest_tag)
+
+    ## remove
+    for filename in ["PKGBUILD_old", ".SRCINFO_old"]:
+        filename = os.path.join(pkg_name, filename)
+        if os.path.exists(filename):
+            os.remove(filename)
+
+    os.chdir(pkg_name)
+    push_changes(latest_tag)
+
+
+if __name__ == "__main__":
+    main()
