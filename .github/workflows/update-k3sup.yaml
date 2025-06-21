@@ -25,8 +25,19 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y python3-pip openssh-client
+          sudo apt install -y python3-pip
           pip3 install requests
+
+      - name: Debug SSH key format
+        run: |
+          echo "Key starts with:"
+          echo "$AUR_SSH_KEY" | head -1
+          echo "Key ends with:"
+          echo "$AUR_SSH_KEY" | tail -1
+          echo "Total lines:"
+          echo "$AUR_SSH_KEY" | wc -l
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
 
       - name: Update AUR package
         env:
