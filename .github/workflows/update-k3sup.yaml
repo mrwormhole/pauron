@@ -1,6 +1,5 @@
 name: Update k3sup AUR package
 
-
 on:
   # Manual trigger
   workflow_dispatch:
