@@ -46,6 +46,23 @@ def setup_ssh_for_aur():
         logger.error(f"SSH key validation failed: {e.stderr}")
         return
 
+    # Add the real AUR host key to known_hosts
+    try:
+        subprocess.run(
+            ["ssh-keyscan", "-H", "aur.archlinux.org"],
+            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
+            check=True,
+        )
+        logger.info("Added AUR host key to known_hosts")
+    except Exception as e:
+        logger.warning(f"Failed to add host key: {e}")
+
+    ssh_config = f"""Host aur.archlinux.org
+    IdentityFile {key_path}
+"""
+    with open(os.path.join(ssh_dir, "config"), "w") as f:
+        f.write(ssh_config)
+
     # Test SSH connection exactly
     try:
         result = subprocess.run(
@@ -67,23 +84,6 @@ def setup_ssh_for_aur():
             logger.info(f"SSH stdout: {result.stdout}")
     except Exception as e:
         logger.warning(f"SSH connection test failed: {e}")
-
-    # Add the real AUR host key to known_hosts
-    try:
-        subprocess.run(
-            ["ssh-keyscan", "-H", "aur.archlinux.org"],
-            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
-            check=True,
-        )
-        logger.info("Added AUR host key to known_hosts")
-    except Exception as e:
-        logger.warning(f"Failed to add host key: {e}")
-
-    ssh_config = f"""Host aur.archlinux.org
-    IdentityFile {key_path}
-"""
-    with open(os.path.join(ssh_dir, "config"), "w") as f:
-        f.write(ssh_config)
 
 
 def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | None:
