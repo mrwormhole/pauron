@@ -96,6 +96,10 @@ def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | Non
         return parse_pkgbuild(pkgbuild_path)
     except subprocess.CalledProcessError as e:
         logger.error(f"Git operation failed: {e}")
+        logger.error(f"  Command: {e.cmd}")
+        logger.error(f"  Return code: {e.returncode}")
+        logger.error(f"  stdout: {e.stdout}")
+        logger.error(f"  stderr: {e.stderr}")
         return None
     except Exception as e:
         logger.error(f"Error: {e}")
