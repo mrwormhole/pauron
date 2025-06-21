@@ -1,13 +1,13 @@
 name: Update k3sup AUR package
 
+
 on:
+  # Manual trigger
   workflow_dispatch:
-    inputs:
-      pkg_name:
-        description: "AUR package name for the updates"
-        required: true
-        default: "k3sup"
-        type: string
+
+  # Cron trigger on the 22nd of every month at 00:00 UTC
+  schedule:
+    - cron: '0 0 22 * *'
 
 jobs:
   update-k3sup-aur:
@@ -32,6 +32,4 @@ jobs:
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
-          python main.py -p ${{ github.event.inputs.pkg_name }}
-  
-  
+          python main.py -p k3sup
