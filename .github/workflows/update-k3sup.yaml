@@ -1,0 +1,36 @@
+name: Update k3sup AUR package
+
+on:
+  workflow_dispatch:
+    inputs:
+      pkg_name:
+        description: "AUR package name for the updates"
+        required: true
+        default: "k3sup"
+        type: string
+
+jobs:
+  update-k3sup-aur:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          sudo apt update && sudo apt upgrade -y
+          sudo apt install -y python3-requests
+
+      - name: Update AUR package
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          python main.py -p ${{ github.event.inputs.pkg_name }}
+  
+  
