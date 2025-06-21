@@ -23,48 +23,56 @@ def setup_ssh_for_aur():
     os.makedirs(ssh_dir, exist_ok=True, mode=0o700)
 
     key_path = os.path.join(ssh_dir, "aur_key")
-
-    # Get the key exactly as it is in the environment
     aur_key = os.environ["AUR_SSH_KEY"]
 
-    # Debug: Check what we're getting
-    logger.info(f"Key length: {len(aur_key)} characters")
-    logger.info(f"Key line count: {aur_key.count(chr(10)) + 1}")  # Count newlines + 1
-
-    # Write key exactly as received, ensuring it ends with newline like echo does
+    # Write key exactly as received, ensuring it ends with newline
     with open(key_path, "w") as f:
         f.write(aur_key)
-        if not aur_key.endswith('\n'):
-            f.write('\n')
+        if not aur_key.endswith("\n"):
+            f.write("\n")
 
     os.chmod(key_path, 0o600)
 
-    # Create SSH config that matches your manual test
+    # Add the real AUR host key to known_hosts
+    try:
+        subprocess.run(
+            ["ssh-keyscan", "-H", "aur.archlinux.org"],
+            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
+            check=True,
+        )
+        logger.info("Added AUR host key to known_hosts")
+    except Exception as e:
+        logger.warning(f"Failed to add host key: {e}")
+
     ssh_config = f"""Host aur.archlinux.org
     IdentityFile {key_path}
-    StrictHostKeyChecking no
 """
-
     with open(os.path.join(ssh_dir, "config"), "w") as f:
         f.write(ssh_config)
 
-    # Test the key format first (this should work now)
+    # Test the key format first
     try:
         result = subprocess.run(
             ["ssh-keygen", "-l", "-f", key_path],
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
         logger.info(f"SSH key fingerprint: {result.stdout.strip()}")
     except subprocess.CalledProcessError as e:
         logger.error(f"SSH key validation failed: {e.stderr}")
         return
 
-    # Test SSH connection exactly like your manual test
+    # Test SSH connection exactly
     try:
         result = subprocess.run(
-            ["ssh", "-i", key_path, "-o", "StrictHostKeyChecking=no", "-T", "aur@aur.archlinux.org"],
+            [
+                "ssh",
+                "-i",
+                key_path,
+                "-T",
+                "aur@aur.archlinux.org",
+            ],
             capture_output=True,
             text=True,
             timeout=10,
@@ -99,7 +107,7 @@ def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | Non
         logger.info("Parsing PKGBUILD...")
         return parse_pkgbuild(pkgbuild_path)
     except subprocess.CalledProcessError as e:
-        logger.error(f"Git operation failed: {e}")
+        logger.error(f"Git clone failed: {e}")
         logger.error(f"  Command: {e.cmd}")
         logger.error(f"  Return code: {e.returncode}")
         logger.error(f"  stdout: {e.stdout}")
