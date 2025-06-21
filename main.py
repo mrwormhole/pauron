@@ -50,6 +50,29 @@ Host aur.archlinux.org
     except Exception as e:
         logger.warning(f"SSH agent setup failed: {e}")
 
+    # Add AUR host key to known_hosts to avoid host verification issues
+    try:
+        subprocess.run(
+            ["ssh-keyscan", "-H", "aur.archlinux.org"],
+            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
+            check=True,
+        )
+        logger.info("Added AUR host key to known_hosts")
+    except Exception as e:
+        logger.warning(f"Failed to add host key: {e}")
+
+    # Test SSH connection
+    try:
+        result = subprocess.run(
+            ["ssh", "-T", "aur@aur.archlinux.org"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        logger.info("SSH connection test completed")
+    except Exception as e:
+        logger.warning(f"SSH connection test failed: {e}")
+
 
 def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | None:
     """Clone AUR package and parse PKGBUILD metadata"""
