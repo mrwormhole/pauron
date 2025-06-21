@@ -50,6 +50,8 @@ jobs:
       - name: Update AUR package
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+          GIT_EMAIL: "talhaaltinel@hotmail.com"
+          GIT_NAME: "Talha Altınel"
         run: |
           python main.py -p ${{ github.event.inputs.pkg_name }}
   
