@@ -14,8 +14,8 @@ logger = logging.getLogger(__name__)
 
 
 def setup_ssh_for_aur():
-    git_email = os.environ.get("GIT_EMAIL", "pauron@pauron.com")
-    git_name = os.environ.get("GIT_NAME", "Pauron")
+    git_email = os.environ.get("GIT_EMAIL", "pauron@bot.com")
+    git_name = os.environ.get("GIT_NAME", "Pauron Bot")
     subprocess.run(["git", "config", "--global", "user.email", git_email], check=True)
     subprocess.run(["git", "config", "--global", "user.name", git_name], check=True)
 
@@ -32,23 +32,6 @@ def setup_ssh_for_aur():
             f.write("\n")
 
     os.chmod(key_path, 0o600)
-
-    # Add the real AUR host key to known_hosts
-    try:
-        subprocess.run(
-            ["ssh-keyscan", "-H", "aur.archlinux.org"],
-            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
-            check=True,
-        )
-        logger.info("Added AUR host key to known_hosts")
-    except Exception as e:
-        logger.warning(f"Failed to add host key: {e}")
-
-    ssh_config = f"""Host aur.archlinux.org
-    IdentityFile {key_path}
-"""
-    with open(os.path.join(ssh_dir, "config"), "w") as f:
-        f.write(ssh_config)
 
     # Test the key format first
     try:
@@ -84,6 +67,23 @@ def setup_ssh_for_aur():
             logger.info(f"SSH stdout: {result.stdout}")
     except Exception as e:
         logger.warning(f"SSH connection test failed: {e}")
+
+    # Add the real AUR host key to known_hosts
+    try:
+        subprocess.run(
+            ["ssh-keyscan", "-H", "aur.archlinux.org"],
+            stdout=open(os.path.join(ssh_dir, "known_hosts"), "w"),
+            check=True,
+        )
+        logger.info("Added AUR host key to known_hosts")
+    except Exception as e:
+        logger.warning(f"Failed to add host key: {e}")
+
+    ssh_config = f"""Host aur.archlinux.org
+    IdentityFile {key_path}
+"""
+    with open(os.path.join(ssh_dir, "config"), "w") as f:
+        f.write(ssh_config)
 
 
 def clone_and_parse(pkg_name: str, aur_repo: str) -> dict[str, None | str] | None:
