@@ -23,9 +23,16 @@ def setup_ssh_for_aur():
     os.makedirs(ssh_dir, exist_ok=True, mode=0o700)
 
     key_path = os.path.join(ssh_dir, "aur_key")
+
+    # Ensure proper key format with newlines
+    aur_key = os.environ["AUR_SSH_KEY"]
+    if not aur_key.endswith('\n'):
+        aur_key += '\n'
+
     with open(key_path, "w") as f:
         f.write(os.environ["AUR_SSH_KEY"])
     os.chmod(key_path, 0o600)
+    os.chmod(ssh_dir, 0o700)
 
     ssh_config = f"""
 Host aur.archlinux.org
@@ -49,6 +56,19 @@ Host aur.archlinux.org
         logger.info("SSH key added to agent successfully")
     except Exception as e:
         logger.warning(f"SSH agent setup failed: {e}")
+
+    # Test the key format first
+    try:
+        result = subprocess.run(
+            ["ssh-keygen", "-l", "-f", key_path],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        logger.info(f"SSH key fingerprint: {result.stdout.strip()}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Invalid SSH key format: {e.stderr}")
+        return False
 
     # Add AUR host key to known_hosts to avoid host verification issues
     try:
