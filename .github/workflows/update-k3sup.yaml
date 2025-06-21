@@ -28,16 +28,24 @@ jobs:
           sudo apt install -y python3-pip
           pip3 install requests
 
-      - name: Debug SSH key format
-        run: |
-          echo "Key starts with:"
-          echo "$AUR_SSH_KEY" | head -1
-          echo "Key ends with:"
-          echo "$AUR_SSH_KEY" | tail -1
-          echo "Total lines:"
-          echo "$AUR_SSH_KEY" | wc -l
+      - name: Test SSH setup manually
         env:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          # Create SSH directory
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          # Write SSH key
+          echo "$AUR_SSH_KEY" > ~/.ssh/aur_key
+          chmod 600 ~/.ssh/aur_key
+
+          # Check if key file exists and has content
+          ls -la ~/.ssh/
+          echo "Key file size: $(wc -c < ~/.ssh/aur_key) bytes"
+
+          # Test SSH connection manually
+          ssh -i ~/.ssh/aur_key -o StrictHostKeyChecking=no -T aur@aur.archlinux.org || echo "SSH test completed (exit code: $?)"
 
       - name: Update AUR package
         env:
