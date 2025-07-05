@@ -1,4 +1,4 @@
-name: Update k3sup AUR package
+name: Update AUR packages
 
 on:
   # Manual trigger
