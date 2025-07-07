@@ -57,11 +57,23 @@ def setup_ssh_for_aur():
     except Exception as e:
         logger.warning(f"Failed to add host key: {e}")
 
-    ssh_config = f"""Host aur.archlinux.org
+    # Preserve existing SSH config and add AUR entry
+    ssh_config_path = os.path.join(ssh_dir, "config")
+    existing_config = ""
+    if os.path.exists(ssh_config_path):
+        with open(ssh_config_path, "r") as f:
+            existing_config = f.read()
+    
+    # Only add AUR config if not already present
+    if "Host aur.archlinux.org" not in existing_config:
+        aur_config = f"""
+# Added by Pauron
+Host aur.archlinux.org
     IdentityFile {key_path}
+    
 """
-    with open(os.path.join(ssh_dir, "config"), "w") as f:
-        f.write(ssh_config)
+        with open(ssh_config_path, "a") as f:
+            f.write(aur_config)
 
     # Test SSH connection exactly
     try:
