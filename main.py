@@ -70,7 +70,7 @@ def setup_ssh_for_aur():
 # Added by Pauron
 Host aur.archlinux.org
     IdentityFile {key_path}
-    
+
 """
         with open(ssh_config_path, "a") as f:
             f.write(aur_config)
@@ -307,45 +307,45 @@ def main():
         metadata = clone_and_parse(pkg_name, aur_repo)
         display_metadata(metadata)
 
-        # logger.info("Checking for latest Github release version...")
-        # owner, repo = metadata["owner_name"], metadata["repo_name"]
-        # latest_tag: str = get_latest_github_release_tag(owner, repo)
-        # current_version, new_version = metadata.get("pkgver"), latest_tag.lstrip("v")
-        # if new_version == current_version:
-        #     logger.info(
-        #         f"Newest Github version({new_version}) and current PKGBUILD version({current_version}) are same, quitting."
-        #     )
-        #     return
+        logger.info("Checking for latest Github release version...")
+        owner, repo = metadata["owner_name"], metadata["repo_name"]
+        latest_tag: str = get_latest_github_release_tag(owner, repo)
+        current_version, new_version = metadata.get("pkgver"), latest_tag.lstrip("v")
+        if new_version == current_version:
+            logger.info(
+                f"Newest Github version({new_version}) and current PKGBUILD version({current_version}) are same, quitting."
+            )
+            return
 
-        # new_sha_hash, new_commit_hash = (
-        #     calculate_sha256(owner, repo, latest_tag),
-        #     calculate_commit(owner, repo, latest_tag),
-        # )
+        new_sha_hash, new_commit_hash = (
+            calculate_sha256(owner, repo, latest_tag),
+            calculate_commit(owner, repo, latest_tag),
+        )
 
-        # ## duplicate
-        # for filename in ["PKGBUILD", ".SRCINFO"]:
-        #     filename = os.path.join(pkg_name, filename)
-        #     if os.path.exists(filename):
-        #         old_filename = f"{filename}_old"
-        #         os.rename(filename, old_filename)
-        #         shutil.copy2(old_filename, filename)
-        #     else:
-        #         logging.warning(f"File {filename} not found")
+        ## duplicate
+        for filename in ["PKGBUILD", ".SRCINFO"]:
+            filename = os.path.join(pkg_name, filename)
+            if os.path.exists(filename):
+                old_filename = f"{filename}_old"
+                os.rename(filename, old_filename)
+                shutil.copy2(old_filename, filename)
+            else:
+                logging.warning(f"File {filename} not found")
 
-        # ## path values in files
-        # file = os.path.join(pkg_name, "PKGBUILD")
-        # update_pkgbuild_file(file, new_version, new_sha_hash, new_commit_hash)
-        # file = os.path.join(pkg_name, ".SRCINFO")
-        # update_dot_srcinfo_file(file, new_version, new_sha_hash, latest_tag)
+        ## path values in files
+        file = os.path.join(pkg_name, "PKGBUILD")
+        update_pkgbuild_file(file, new_version, new_sha_hash, new_commit_hash)
+        file = os.path.join(pkg_name, ".SRCINFO")
+        update_dot_srcinfo_file(file, new_version, new_sha_hash, latest_tag)
 
-        # ## remove
-        # for filename in ["PKGBUILD_old", ".SRCINFO_old"]:
-        #     filename = os.path.join(pkg_name, filename)
-        #     if os.path.exists(filename):
-        #         os.remove(filename)
+        ## remove
+        for filename in ["PKGBUILD_old", ".SRCINFO_old"]:
+            filename = os.path.join(pkg_name, filename)
+            if os.path.exists(filename):
+                os.remove(filename)
 
-        # os.chdir(pkg_name)
-        # push_changes(latest_tag)
+        os.chdir(pkg_name)
+        push_changes(latest_tag)
     finally:
         restore_git_config("user.email", original_email)
         restore_git_config("user.name", original_name)
