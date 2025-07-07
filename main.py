@@ -259,6 +259,18 @@ def push_changes(latest_tag: str):
     logging.info(f"Successfully committed and pushed {latest_tag}")
 
 
+def get_git_config(key):
+    result = subprocess.run(["git", "config", "--global", key], capture_output=True, text=True, check=True)
+    return result.stdout.strip()
+
+
+def restore_git_config(key, value):
+    if value is not None:
+        subprocess.run(["git", "config", "--global", key, value], check=True)
+    else:
+        subprocess.run(["git", "config", "--global", "--unset", key], check=False)
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Update AUR package from GitHub releases"
@@ -270,52 +282,61 @@ def main():
 
     pkg_name = args.pkg_name
     aur_repo = f"ssh://aur@aur.archlinux.org/{pkg_name}.git"
+    original_email = get_git_config("user.email")
+    original_name = get_git_config("user.name")
+    print(original_email)
+    print(original_name)
 
-    setup_ssh_for_aur()
+    try:
+        pass
+        setup_ssh_for_aur()
 
-    logger.info(f"Processing AUR package: {aur_repo}")
-    metadata = clone_and_parse(pkg_name, aur_repo)
-    display_metadata(metadata)
+        logger.info(f"Processing AUR package: {aur_repo}")
+        metadata = clone_and_parse(pkg_name, aur_repo)
+        display_metadata(metadata)
 
-    logger.info("Checking for latest Github release version...")
-    owner, repo = metadata["owner_name"], metadata["repo_name"]
-    latest_tag: str = get_latest_github_release_tag(owner, repo)
-    current_version, new_version = metadata.get("pkgver"), latest_tag.lstrip("v")
-    if new_version == current_version:
-        logger.info(
-            f"Newest Github version({new_version}) and current PKGBUILD version({current_version}) are same, quitting."
-        )
-        return
+        # logger.info("Checking for latest Github release version...")
+        # owner, repo = metadata["owner_name"], metadata["repo_name"]
+        # latest_tag: str = get_latest_github_release_tag(owner, repo)
+        # current_version, new_version = metadata.get("pkgver"), latest_tag.lstrip("v")
+        # if new_version == current_version:
+        #     logger.info(
+        #         f"Newest Github version({new_version}) and current PKGBUILD version({current_version}) are same, quitting."
+        #     )
+        #     return
 
-    new_sha_hash, new_commit_hash = (
-        calculate_sha256(owner, repo, latest_tag),
-        calculate_commit(owner, repo, latest_tag),
-    )
+        # new_sha_hash, new_commit_hash = (
+        #     calculate_sha256(owner, repo, latest_tag),
+        #     calculate_commit(owner, repo, latest_tag),
+        # )
 
-    ## duplicate
-    for filename in ["PKGBUILD", ".SRCINFO"]:
-        filename = os.path.join(pkg_name, filename)
-        if os.path.exists(filename):
-            old_filename = f"{filename}_old"
-            os.rename(filename, old_filename)
-            shutil.copy2(old_filename, filename)
-        else:
-            logging.warning(f"File {filename} not found")
+        # ## duplicate
+        # for filename in ["PKGBUILD", ".SRCINFO"]:
+        #     filename = os.path.join(pkg_name, filename)
+        #     if os.path.exists(filename):
+        #         old_filename = f"{filename}_old"
+        #         os.rename(filename, old_filename)
+        #         shutil.copy2(old_filename, filename)
+        #     else:
+        #         logging.warning(f"File {filename} not found")
 
-    ## path values in files
-    file = os.path.join(pkg_name, "PKGBUILD")
-    update_pkgbuild_file(file, new_version, new_sha_hash, new_commit_hash)
-    file = os.path.join(pkg_name, ".SRCINFO")
-    update_dot_srcinfo_file(file, new_version, new_sha_hash, latest_tag)
+        # ## path values in files
+        # file = os.path.join(pkg_name, "PKGBUILD")
+        # update_pkgbuild_file(file, new_version, new_sha_hash, new_commit_hash)
+        # file = os.path.join(pkg_name, ".SRCINFO")
+        # update_dot_srcinfo_file(file, new_version, new_sha_hash, latest_tag)
 
-    ## remove
-    for filename in ["PKGBUILD_old", ".SRCINFO_old"]:
-        filename = os.path.join(pkg_name, filename)
-        if os.path.exists(filename):
-            os.remove(filename)
+        # ## remove
+        # for filename in ["PKGBUILD_old", ".SRCINFO_old"]:
+        #     filename = os.path.join(pkg_name, filename)
+        #     if os.path.exists(filename):
+        #         os.remove(filename)
 
-    os.chdir(pkg_name)
-    push_changes(latest_tag)
+        # os.chdir(pkg_name)
+        # push_changes(latest_tag)
+    finally:
+        restore_git_config("user.email", original_email)
+        restore_git_config("user.name", original_name)
 
 
 if __name__ == "__main__":
