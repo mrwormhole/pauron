@@ -271,9 +271,12 @@ def push_changes(latest_tag: str):
     logging.info(f"Successfully committed and pushed {latest_tag}")
 
 
-def get_git_config(key):
-    result = subprocess.run(["git", "config", "--global", key], capture_output=True, text=True, check=True)
-    return result.stdout.strip()
+def get_git_config(key) -> str | None:
+    try:
+        result = subprocess.run(["git", "config", "--global", key], capture_output=True, text=True, check=True)
+        return result.stdout.strip()
+    except subprocess.CalledProcessError:
+        return None
 
 
 def restore_git_config(key, value):
