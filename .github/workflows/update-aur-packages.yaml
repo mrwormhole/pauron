@@ -4,9 +4,9 @@ on:
   # Manual trigger
   workflow_dispatch:
 
-  # Cron trigger on the 22nd of every month at 00:00 UTC
+  # Cron trigger on the 1st day of every month at 00:00 UTC
   schedule:
-    - cron: '0 0 22 * *'
+    - cron: '0 0 1 * *'
 
 jobs:
   update-k3sup-aur:
@@ -32,3 +32,27 @@ jobs:
           AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
         run: |
           python main.py -p k3sup
+  
+  update-keyboard-app-aur:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y python3-pip
+          pip3 install requests
+
+      - name: Update AUR package
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          python main.py -p keyboard-app        
